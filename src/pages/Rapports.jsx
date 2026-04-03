@@ -8,6 +8,14 @@ export default function Rapports({ state, showToast }) {
   const [reportType, setReportType] = useState('daily');
   const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
 
+  if (!sites.length) return (
+    <div style={{ textAlign: 'center', padding: '48px 20px', color: '#667085' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#344054', marginBottom: 6 }}>Aucune donnée disponible</div>
+      <div style={{ fontSize: 12 }}>Ajoutez des sites et des saisies pour générer des rapports.</div>
+    </div>
+  );
+
   const allRows = [];
   sites.forEach(site => {
     (saisies[site.id] || []).forEach(r => {

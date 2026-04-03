@@ -15,6 +15,15 @@ const emptyForm = () => ({
 
 export default function Saisie({ state, currentSite, onSelectSite, onSave, showToast }) {
   const { sites, saisies } = state;
+
+  if (!sites.length) return (
+    <div style={{ textAlign: 'center', padding: '48px 20px', color: '#667085' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>✏️</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#344054', marginBottom: 6 }}>Aucun site configuré</div>
+      <div style={{ fontSize: 12 }}>Ajoutez un site dans l'onglet Sites avant de saisir des données.</div>
+    </div>
+  );
+
   const site = sites[currentSite];
   const [form, setForm] = useState(emptyForm());
 

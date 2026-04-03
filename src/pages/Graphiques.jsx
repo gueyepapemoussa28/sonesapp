@@ -15,8 +15,17 @@ const CHART_TYPES = [
 
 export default function Graphiques({ state, currentSite, onSelectSite }) {
   const { sites, saisies } = state;
-  const site = sites[currentSite];
   const [activeChart, setActiveChart] = useState('pression');
+
+  if (!sites.length) return (
+    <div style={{ textAlign: 'center', padding: '48px 20px', color: '#667085' }}>
+      <div style={{ fontSize: 36, marginBottom: 12 }}>📈</div>
+      <div style={{ fontSize: 14, fontWeight: 600, color: '#344054', marginBottom: 6 }}>Aucun site configuré</div>
+      <div style={{ fontSize: 12 }}>Ajoutez un site dans l'onglet Sites pour voir les graphiques.</div>
+    </div>
+  );
+
+  const site = sites[currentSite];
 
   const rows = (saisies[site.id] || []).slice(-14);
 
