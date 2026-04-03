@@ -63,7 +63,10 @@ export default function App() {
         saisies[site.id] = await dbFetchSaisies(site.id);
       }));
       setState({ sites, saisies });
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error('loadAllData error:', e);
+      showToast('❌ Erreur chargement : ' + (e.message || 'inconnue'));
+    }
   }
 
   function showToast(msg) {
