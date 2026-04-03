@@ -1,4 +1,3 @@
-// src/pages/Saisie.js
 import React, { useState, useEffect } from 'react';
 import { Section, FuelBar, SiteSelector } from '../components/UI.jsx';
 import { getLatest, getPrev } from '../utils/store.js';
@@ -6,8 +5,8 @@ import { getLatest, getPrev } from '../utils/store.js';
 const today = () => new Date().toISOString().split('T')[0];
 const nowTime = () => new Date().toTimeString().slice(0, 5);
 
-const emptyForm = () => ({
-  date: today(), heure: nowTime(),
+const emptyForm = (date = today()) => ({
+  date, heure: nowTime(),
   cpt_h: '', cpt_eau: '', pression: '',
   k1: '', k2: '', kvar: '', cosphi: '',
   ge_h: '', ge_marche: '', carburant: '', obs: ''
@@ -25,28 +24,44 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
   );
 
   const site = sites[currentSite];
-  const [form, setForm] = useState(emptyForm());
+  const rows = saisies[site.id] || [];
+  const sortedDates = [...new Set(rows.map(r => r.date))].sort();
 
+  const [selectedDate, setSelectedDate] = useState(today());
+  const [form, setForm] = useState(emptyForm());
+  const [saving, setSaving] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+
+  // Quand on change de site ou de date → charger la saisie correspondante
   useEffect(() => {
-    // Pre-fill with today's existing data if any
-    const rows = saisies[site.id] || [];
-    const todayRow = rows.find(r => r.date === today());
-    if (todayRow) {
+    const row = rows.find(r => r.date === selectedDate);
+    if (row) {
       const filled = {};
-      Object.keys(emptyForm()).forEach(k => { filled[k] = todayRow[k] !== undefined ? String(todayRow[k]) : ''; });
+      Object.keys(emptyForm()).forEach(k => { filled[k] = row[k] !== undefined ? String(row[k]) : ''; });
       setForm(filled);
     } else {
-      setForm(emptyForm());
+      setForm(emptyForm(selectedDate));
     }
-  }, [currentSite, site.id, saisies]);
+  }, [currentSite, site.id, selectedDate, saisies]);
 
-  const prev = getPrev(saisies, site.id);
+  // Reset date quand on change de site
+  useEffect(() => { setSelectedDate(today()); }, [currentSite]);
+
+  const currentIdx = sortedDates.indexOf(selectedDate);
+  const hasPrev = currentIdx > 0;
+  const hasNext = currentIdx < sortedDates.length - 1 && sortedDates[currentIdx + 1] <= today();
+  const isExisting = rows.some(r => r.date === selectedDate);
+
+  // Pour les deltas, trouver la saisie du jour précédent dans les données
+  const prevRow = (() => {
+    const idx = sortedDates.indexOf(selectedDate);
+    if (idx > 0) return rows.find(r => r.date === sortedDates[idx - 1]);
+    return null;
+  })();
 
   function set(field) {
     return e => setForm(f => ({ ...f, [field]: e.target.value }));
   }
-
-  const [saving, setSaving] = React.useState(false);
 
   async function handleSubmit(e) {
     e.preventDefault();
@@ -81,21 +96,24 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
     fontSize: 14, fontFamily: "'Space Mono', monospace", outline: 'none',
     background: 'white', width: '100%', boxSizing: 'border-box'
   };
-  const labelStyle = { fontSize: 11, fontWeight: 600, color: '#344054', textTransform: 'uppercase', letterSpacing: '0.4px', display: 'block', marginBottom: 4 };
+  const labelStyle = {
+    fontSize: 11, fontWeight: 600, color: '#344054',
+    textTransform: 'uppercase', letterSpacing: '0.4px',
+    display: 'block', marginBottom: 4
+  };
   const grid2 = { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 };
   const fieldWrap = { display: 'flex', flexDirection: 'column' };
 
   function DeltaHint({ field }) {
-    if (!prev || prev[field] === undefined || form[field] === '') return null;
+    if (!prevRow || prevRow[field] === undefined || form[field] === '') return null;
     const val = parseFloat(form[field]);
-    const delta = parseFloat((val - prev[field]).toFixed(3));
+    const delta = parseFloat((val - prevRow[field]).toFixed(3));
     return (
       <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
         <span style={{
           fontSize: 10, padding: '2px 7px', borderRadius: 20, fontWeight: 600,
-          fontFamily: "'Space Mono', monospace",
-          background: '#F9FAFB', color: '#667085'
-        }}>Hier: {prev[field]}</span>
+          fontFamily: "'Space Mono', monospace", background: '#F9FAFB', color: '#667085'
+        }}>Préc: {prevRow[field]}</span>
         {!isNaN(delta) && <span style={{
           fontSize: 10, padding: '2px 7px', borderRadius: 20, fontWeight: 600,
           background: delta >= 0 ? '#DCFAE6' : '#FEE4E2',
@@ -112,13 +130,98 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
     <div>
       <SiteSelector sites={sites} current={currentSite} onSelect={onSelectSite} />
 
+      {/* Navigation par date */}
+      <div style={{
+        background: 'white', borderRadius: 14, padding: '12px 14px',
+        marginBottom: 14, border: '1px solid #E4E7EC',
+        boxShadow: '0 1px 4px rgba(16,24,40,0.05)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          {/* Flèche précédente */}
+          <button onClick={() => hasPrev && setSelectedDate(sortedDates[currentIdx - 1])}
+            disabled={!hasPrev}
+            style={{
+              width: 36, height: 36, borderRadius: 9, border: '1.5px solid #E4E7EC',
+              background: hasPrev ? 'white' : '#F9FAFB', cursor: hasPrev ? 'pointer' : 'default',
+              fontSize: 16, color: hasPrev ? '#0057A8' : '#C0C8D6',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>‹</button>
+
+          {/* Sélecteur de date central */}
+          <div style={{ flex: 1, textAlign: 'center' }}>
+            <input
+              type="date"
+              value={selectedDate}
+              max={today()}
+              onChange={e => setSelectedDate(e.target.value)}
+              style={{
+                border: 'none', outline: 'none', fontSize: 15, fontWeight: 700,
+                color: '#101828', textAlign: 'center', cursor: 'pointer',
+                fontFamily: "'Outfit', sans-serif", background: 'transparent', width: '100%'
+              }}
+            />
+            <div style={{ fontSize: 11, marginTop: 2 }}>
+              {isExisting
+                ? <span style={{ color: '#027A48', fontWeight: 600 }}>✓ Saisie enregistrée</span>
+                : <span style={{ color: '#F4720B', fontWeight: 600 }}>Nouvelle saisie</span>
+              }
+            </div>
+          </div>
+
+          {/* Flèche suivante */}
+          <button onClick={() => hasNext && setSelectedDate(sortedDates[currentIdx + 1])}
+            disabled={!hasNext}
+            style={{
+              width: 36, height: 36, borderRadius: 9, border: '1.5px solid #E4E7EC',
+              background: hasNext ? 'white' : '#F9FAFB', cursor: hasNext ? 'pointer' : 'default',
+              fontSize: 16, color: hasNext ? '#0057A8' : '#C0C8D6',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+            }}>›</button>
+
+          {/* Bouton historique */}
+          <button onClick={() => setShowHistory(v => !v)} style={{
+            padding: '6px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC',
+            background: showHistory ? '#EBF3FF' : 'white', cursor: 'pointer',
+            fontSize: 11, fontWeight: 600, color: showHistory ? '#0057A8' : '#344054',
+            fontFamily: "'Outfit', sans-serif", flexShrink: 0
+          }}>
+            {sortedDates.length} saisie{sortedDates.length !== 1 ? 's' : ''}
+          </button>
+        </div>
+
+        {/* Liste historique déroulante */}
+        {showHistory && sortedDates.length > 0 && (
+          <div style={{
+            marginTop: 12, borderTop: '1px solid #F2F4F7', paddingTop: 10,
+            maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4
+          }}>
+            {[...sortedDates].reverse().map(date => (
+              <button key={date} onClick={() => { setSelectedDate(date); setShowHistory(false); }}
+                style={{
+                  textAlign: 'left', padding: '8px 12px', borderRadius: 8,
+                  border: 'none', cursor: 'pointer', fontFamily: "'Outfit', sans-serif",
+                  background: date === selectedDate ? '#EBF3FF' : 'transparent',
+                  color: date === selectedDate ? '#0057A8' : '#344054',
+                  fontWeight: date === selectedDate ? 700 : 400, fontSize: 13,
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}>
+                <span>{new Date(date + 'T12:00:00').toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                {date === today() && <span style={{ fontSize: 10, color: '#0057A8', fontWeight: 700 }}>Aujourd'hui</span>}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
       <form onSubmit={handleSubmit}>
         {/* Général */}
         <Section icon="🕐" iconBg="#E8F2FF" title="Informations générales">
           <div style={grid2}>
             <div style={fieldWrap}>
               <label style={labelStyle}>Date</label>
-              <input type="date" value={form.date} onChange={set('date')} style={fieldStyle} required />
+              <input type="date" value={form.date} max={today()}
+                onChange={e => { set('date')(e); setSelectedDate(e.target.value); }}
+                style={fieldStyle} required />
             </div>
             <div style={fieldWrap}>
               <label style={labelStyle}>Heure d'arrivée</label>
@@ -143,11 +246,8 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
           </div>
           <div style={{ marginBottom: 12 }}>
             <label style={labelStyle}>Pression (bars)</label>
-            <input
-              type="number" value={form.pression} onChange={set('pression')}
-              step="0.01" placeholder="0.00"
-              style={{ ...fieldStyle, borderColor: pressWarn ? '#D92D20' : '#E4E7EC' }}
-            />
+            <input type="number" value={form.pression} onChange={set('pression')} step="0.01" placeholder="0.00"
+              style={{ ...fieldStyle, borderColor: pressWarn ? '#D92D20' : '#E4E7EC' }} />
             {pressWarn && <p style={{ fontSize: 11, color: '#D92D20', marginTop: 4 }}>⚠ Pression sous le seuil minimum (2 bars)</p>}
             <DeltaHint field="pression" />
           </div>
@@ -159,7 +259,8 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
             {[['k1 (kWh)', 'k1', '0.1'], ['k2 (kWh)', 'k2', '0.1'], ['kvar', 'kvar', '0.1'], ['cos φ', 'cosphi', '0.001']].map(([label, field, step]) => (
               <div key={field} style={fieldWrap}>
                 <label style={labelStyle}>{label}</label>
-                <input type="number" value={form[field]} onChange={set(field)} step={step} placeholder={step === '0.001' ? '0.000' : '0.0'} style={fieldStyle} />
+                <input type="number" value={form[field]} onChange={set(field)} step={step}
+                  placeholder={step === '0.001' ? '0.000' : '0.0'} style={fieldStyle} />
               </div>
             ))}
           </div>
@@ -179,11 +280,9 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
           </div>
           <div>
             <label style={labelStyle}>Niveau carburant (%)</label>
-            <input
-              type="number" value={form.carburant} onChange={set('carburant')}
+            <input type="number" value={form.carburant} onChange={set('carburant')}
               min="0" max="100" step="1" placeholder="0"
-              style={{ ...fieldStyle, marginBottom: 8 }}
-            />
+              style={{ ...fieldStyle, marginBottom: 8 }} />
             <FuelBar value={carbVal} />
             {carbVal > 0 && <DeltaHint field="carburant" />}
           </div>
@@ -191,11 +290,8 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
 
         {/* Observations */}
         <Section icon="📝" iconBg="#E0F5F1" title="Observations">
-          <input
-            type="text" value={form.obs} onChange={set('obs')}
-            placeholder="Remarques éventuelles..."
-            style={fieldStyle}
-          />
+          <input type="text" value={form.obs} onChange={set('obs')}
+            placeholder="Remarques éventuelles..." style={fieldStyle} />
         </Section>
 
         <button type="submit" disabled={saving} style={{
@@ -206,7 +302,7 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
           fontFamily: "'Outfit', sans-serif", boxShadow: '0 4px 12px rgba(0,87,168,0.3)',
           marginBottom: 16
         }}>
-          {saving ? '⏳ Enregistrement...' : '💾 Enregistrer la saisie'}
+          {saving ? '⏳ Enregistrement...' : (isExisting ? '💾 Mettre à jour la saisie' : '💾 Enregistrer la saisie')}
         </button>
       </form>
     </div>
