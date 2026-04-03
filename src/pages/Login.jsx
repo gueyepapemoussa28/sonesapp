@@ -1,18 +1,23 @@
-// src/pages/Login.js
 import React, { useState } from 'react';
-import { CREDENTIALS } from '../utils/store.js';
+import { dbLogin } from '../utils/store.js';
 
 export default function Login({ onLogin }) {
-  const [user, setUser] = useState('');
+  const [email, setEmail] = useState('');
   const [pass, setPass] = useState('');
   const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault();
-    if (user === CREDENTIALS.user && pass === CREDENTIALS.pass) {
+    setLoading(true);
+    setError('');
+    try {
+      await dbLogin(email, pass);
       onLogin();
-    } else {
+    } catch (err) {
       setError('Identifiants incorrects. Réessayez.');
+    } finally {
+      setLoading(false);
     }
   }
 
@@ -26,7 +31,6 @@ export default function Login({ onLogin }) {
         background: 'white', borderRadius: 20, padding: 40,
         width: '100%', maxWidth: 400, boxShadow: '0 24px 48px rgba(0,30,80,0.2)'
       }}>
-        {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{
             width: 72, height: 72, borderRadius: '50%',
@@ -45,18 +49,20 @@ export default function Login({ onLogin }) {
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>
             <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#344054', marginBottom: 6 }}>
-              Identifiant
+              Email
             </label>
             <input
-              type="text"
-              value={user}
-              onChange={e => { setUser(e.target.value); setError(''); }}
-              placeholder="admin"
-              autoComplete="username"
+              type="email"
+              value={email}
+              onChange={e => { setEmail(e.target.value); setError(''); }}
+              placeholder="admin@seneau.sn"
+              autoComplete="email"
+              required
               style={{
                 width: '100%', padding: '10px 14px',
                 border: '1.5px solid #E4E7EC', borderRadius: 10,
-                fontSize: 14, outline: 'none', fontFamily: "'Outfit', sans-serif"
+                fontSize: 14, outline: 'none', fontFamily: "'Outfit', sans-serif",
+                boxSizing: 'border-box'
               }}
             />
           </div>
@@ -70,10 +76,12 @@ export default function Login({ onLogin }) {
               onChange={e => { setPass(e.target.value); setError(''); }}
               placeholder="••••••••"
               autoComplete="current-password"
+              required
               style={{
                 width: '100%', padding: '10px 14px',
                 border: '1.5px solid #E4E7EC', borderRadius: 10,
-                fontSize: 14, outline: 'none', fontFamily: "'Outfit', sans-serif"
+                fontSize: 14, outline: 'none', fontFamily: "'Outfit', sans-serif",
+                boxSizing: 'border-box'
               }}
             />
           </div>
@@ -82,19 +90,16 @@ export default function Login({ onLogin }) {
             <p style={{ fontSize: 13, color: '#D92D20', textAlign: 'center', margin: '8px 0' }}>{error}</p>
           )}
 
-          <button type="submit" style={{
+          <button type="submit" disabled={loading} style={{
             width: '100%', padding: '12px', marginTop: 12,
-            background: 'linear-gradient(135deg, #0057A8, #3381C8)',
+            background: loading ? '#A0AEBF' : 'linear-gradient(135deg, #0057A8, #3381C8)',
             color: 'white', border: 'none', borderRadius: 10,
-            fontSize: 15, fontWeight: 600, cursor: 'pointer', fontFamily: "'Outfit', sans-serif"
+            fontSize: 15, fontWeight: 600, cursor: loading ? 'not-allowed' : 'pointer',
+            fontFamily: "'Outfit', sans-serif"
           }}>
-            Se connecter
+            {loading ? 'Connexion...' : 'Se connecter'}
           </button>
         </form>
-
-        <p style={{ fontSize: 11, color: '#aaa', textAlign: 'center', marginTop: 20 }}>
-          Version démo — admin / seneau2025
-        </p>
       </div>
     </div>
   );

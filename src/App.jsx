@@ -1,5 +1,5 @@
 // src/App.js
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Saisie from './pages/Saisie.jsx';
@@ -7,7 +7,12 @@ import Graphiques from './pages/Graphiques.jsx';
 import Rapports from './pages/Rapports.jsx';
 import Sites from './pages/Sites.jsx';
 import { Toast, Modal, AlertItem } from './components/UI.jsx';
-import { loadState, saveState, computeAlerts } from './utils/store';
+import { computeAlerts } from './utils/store';
+import {
+  dbGetSession, dbLogout,
+  dbFetchSites, dbAddSite, dbDeleteSite,
+  dbFetchSaisies, dbUpsertSaisie
+} from './utils/store';
 
 const TABS = [
   { key: 'dashboard', label: '📊 Dashboard' },
@@ -17,67 +22,127 @@ const TABS = [
   { key: 'sites', label: '🏗 Sites' },
 ];
 
+const EMPTY_STATE = { sites: [], saisies: {} };
+
 export default function App() {
   const [logged, setLogged] = useState(false);
   const [tab, setTab] = useState('dashboard');
   const [currentSite, setCurrentSite] = useState(0);
-  const [state, setState] = useState(() => loadState());
+  const [state, setState] = useState(EMPTY_STATE);
   const [toast, setToast] = useState({ msg: '', visible: false });
   const [alertsModal, setAlertsModal] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  // Check existing session on mount
+  useEffect(() => {
+    dbGetSession().then(session => {
+      if (session) {
+        setLogged(true);
+        loadAllData();
+      } else {
+        setLoading(false);
+      }
+    });
+  }, []);
+
+  async function loadAllData() {
+    setLoading(true);
+    try {
+      const sites = await dbFetchSites();
+      const saisies = {};
+      await Promise.all(sites.map(async site => {
+        const rows = await dbFetchSaisies(site.id);
+        saisies[site.id] = rows;
+      }));
+      setState({ sites, saisies });
+    } catch (e) {
+      console.error('Erreur chargement données', e);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   function showToast(msg) {
     setToast({ msg, visible: true });
     setTimeout(() => setToast(t => ({ ...t, visible: false })), 2800);
   }
 
-  function updateState(newState) {
-    setState(newState);
-    saveState(newState);
-  }
-
-  const handleSave = useCallback((siteId, entry) => {
-    setState(prev => {
-      const saisies = { ...prev.saisies };
-      const rows = [...(saisies[siteId] || [])];
-      const idx = rows.findIndex(r => r.date === entry.date);
-      if (idx >= 0) rows[idx] = entry;
-      else rows.push(entry);
-      rows.sort((a, b) => a.date.localeCompare(b.date));
-      const next = { ...prev, saisies: { ...saisies, [siteId]: rows } };
-      saveState(next);
-      return next;
-    });
+  const handleLogin = useCallback(() => {
+    setLogged(true);
+    loadAllData();
   }, []);
 
-  const handleAddSite = useCallback(({ name, loc, status }) => {
-    setState(prev => {
-      const id = Date.now();
-      const next = {
+  const handleLogout = useCallback(async () => {
+    await dbLogout();
+    setLogged(false);
+    setState(EMPTY_STATE);
+    setCurrentSite(0);
+  }, []);
+
+  const handleSave = useCallback(async (siteId, entry) => {
+    try {
+      await dbUpsertSaisie(siteId, entry);
+      // Update local state
+      setState(prev => {
+        const rows = [...(prev.saisies[siteId] || [])];
+        const idx = rows.findIndex(r => r.date === entry.date);
+        if (idx >= 0) rows[idx] = { ...rows[idx], ...entry };
+        else rows.push(entry);
+        rows.sort((a, b) => a.date.localeCompare(b.date));
+        return { ...prev, saisies: { ...prev.saisies, [siteId]: rows } };
+      });
+    } catch (e) {
+      showToast('❌ Erreur lors de la sauvegarde');
+      throw e;
+    }
+  }, []);
+
+  const handleAddSite = useCallback(async ({ name, loc, status }) => {
+    try {
+      const newSite = await dbAddSite({ name, loc, status });
+      setState(prev => ({
         ...prev,
-        sites: [...prev.sites, { id, name, loc, status }],
-        saisies: { ...prev.saisies, [id]: [] }
-      };
-      saveState(next);
-      return next;
-    });
+        sites: [...prev.sites, newSite],
+        saisies: { ...prev.saisies, [newSite.id]: [] }
+      }));
+    } catch (e) {
+      showToast('❌ Erreur lors de l\'ajout du site');
+    }
   }, []);
 
-  const handleDeleteSite = useCallback((idx) => {
-    setState(prev => {
-      const sites = prev.sites.filter((_, i) => i !== idx);
-      const next = { ...prev, sites };
-      saveState(next);
-      return next;
-    });
-    setCurrentSite(c => Math.min(c, state.sites.length - 2));
-  }, [state.sites.length]);
+  const handleDeleteSite = useCallback(async (idx) => {
+    const site = state.sites[idx];
+    if (!site) return;
+    try {
+      await dbDeleteSite(site.id);
+      setState(prev => {
+        const sites = prev.sites.filter((_, i) => i !== idx);
+        const saisies = { ...prev.saisies };
+        delete saisies[site.id];
+        return { ...prev, sites, saisies };
+      });
+      setCurrentSite(c => Math.max(0, Math.min(c, state.sites.length - 2)));
+    } catch (e) {
+      showToast('❌ Erreur lors de la suppression');
+    }
+  }, [state.sites]);
 
   const alerts = computeAlerts(state.sites, state.saisies);
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  if (!logged) return <Login onLogin={() => setLogged(true)} />;
+  if (!logged) return <Login onLogin={handleLogin} />;
+
+  if (loading) return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      minHeight: '100vh', background: '#F9FAFB', flexDirection: 'column', gap: 16
+    }}>
+      <div style={{ fontSize: 40 }}>💧</div>
+      <p style={{ color: '#0057A8', fontWeight: 600 }}>Chargement des données...</p>
+    </div>
+  );
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -121,7 +186,7 @@ export default function App() {
             )}
           </button>
           <button
-            onClick={() => setLogged(false)}
+            onClick={handleLogout}
             style={{
               background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
               borderRadius: 8, padding: '6px 10px', cursor: 'pointer',

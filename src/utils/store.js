@@ -1,8 +1,63 @@
 // src/utils/store.js
+import { supabase } from './supabase.js';
 
 const STORAGE_KEY = 'sitewatch_state_v2';
 
-export const CREDENTIALS = { user: 'admin', pass: 'seneau2025' };
+// ── Supabase: Sites ──────────────────────────────────────────────────────────
+
+export async function dbFetchSites() {
+  const { data, error } = await supabase.from('sites').select('*').order('id');
+  if (error) throw error;
+  return data;
+}
+
+export async function dbAddSite({ name, loc, status }) {
+  const { data, error } = await supabase.from('sites').insert({ name, loc, status }).select().single();
+  if (error) throw error;
+  return data;
+}
+
+export async function dbDeleteSite(id) {
+  const { error } = await supabase.from('sites').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ── Supabase: Saisies ────────────────────────────────────────────────────────
+
+export async function dbFetchSaisies(siteId) {
+  const { data, error } = await supabase
+    .from('saisies')
+    .select('*')
+    .eq('site_id', siteId)
+    .order('date');
+  if (error) throw error;
+  return data;
+}
+
+export async function dbUpsertSaisie(siteId, entry) {
+  const row = { ...entry, site_id: siteId };
+  const { error } = await supabase
+    .from('saisies')
+    .upsert(row, { onConflict: 'site_id,date' });
+  if (error) throw error;
+}
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+
+export async function dbLogin(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  return data.session;
+}
+
+export async function dbLogout() {
+  await supabase.auth.signOut();
+}
+
+export async function dbGetSession() {
+  const { data } = await supabase.auth.getSession();
+  return data.session;
+}
 
 export const THRESHOLDS = {
   pression_min: 2.0,
