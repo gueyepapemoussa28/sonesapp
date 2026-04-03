@@ -59,6 +59,70 @@ export async function dbGetSession() {
   return data.session;
 }
 
+export async function dbGetProfile(userId) {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', userId)
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function dbChangePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+}
+
+export async function dbMarkPasswordChanged(userId) {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ must_change_password: false })
+    .eq('id', userId);
+  if (error) throw error;
+}
+
+export async function dbForgotPassword(email) {
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.origin + '/?reset=true',
+  });
+  if (error) throw error;
+}
+
+// ── Admin: gestion des utilisateurs ─────────────────────────────────────────
+
+export async function dbFetchUsers() {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at');
+  if (error) throw error;
+  return data;
+}
+
+export async function dbInviteUser({ email, full_name, role }) {
+  const { data, error } = await supabase.functions.invoke('invite-user', {
+    body: { email, full_name, role },
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function dbUpdateUserRole(userId, role) {
+  const { error } = await supabase
+    .from('profiles')
+    .update({ role })
+    .eq('id', userId);
+  if (error) throw error;
+}
+
+export async function dbDeleteUser(userId) {
+  const { error } = await supabase.functions.invoke('delete-user', {
+    body: { userId },
+  });
+  if (error) throw error;
+}
+
 export const THRESHOLDS = {
   pression_min: 2.0,
   carburant_warn: 20,

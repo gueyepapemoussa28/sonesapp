@@ -1,52 +1,60 @@
-// src/App.js
 import React, { useState, useCallback, useEffect } from 'react';
 import Login from './pages/Login.jsx';
+import ChangePassword from './pages/ChangePassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Saisie from './pages/Saisie.jsx';
 import Graphiques from './pages/Graphiques.jsx';
 import Rapports from './pages/Rapports.jsx';
 import Sites from './pages/Sites.jsx';
-import { Toast, Modal, AlertItem } from './components/UI.jsx';
+import Admin from './pages/Admin.jsx';
+import { Toast, AlertItem } from './components/UI.jsx';
 import { computeAlerts } from './utils/store';
 import {
-  dbGetSession, dbLogout,
+  dbGetSession, dbLogout, dbGetProfile,
   dbFetchSites, dbAddSite, dbDeleteSite,
   dbFetchSaisies, dbUpsertSaisie
 } from './utils/store';
 
-const TABS = [
-  { key: 'dashboard', label: '📊 Dashboard' },
-  { key: 'saisie', label: '✏️ Saisie' },
-  { key: 'graphiques', label: '📈 Graphiques' },
-  { key: 'rapports', label: '📋 Rapports' },
-  { key: 'sites', label: '🏗 Sites' },
-];
-
 const EMPTY_STATE = { sites: [], saisies: {} };
 
 export default function App() {
-  const [logged, setLogged] = useState(false);
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [tab, setTab] = useState('dashboard');
   const [currentSite, setCurrentSite] = useState(0);
   const [state, setState] = useState(EMPTY_STATE);
   const [toast, setToast] = useState({ msg: '', visible: false });
   const [alertsModal, setAlertsModal] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [appLoading, setAppLoading] = useState(true);
 
-  // Check existing session on mount
+  // Check session on mount (handles password reset redirect too)
   useEffect(() => {
-    dbGetSession().then(session => {
-      if (session) {
-        setLogged(true);
-        loadAllData();
+    dbGetSession().then(s => {
+      if (s) {
+        setSession(s);
+        loadProfile(s.user.id);
       } else {
-        setLoading(false);
+        setAppLoading(false);
       }
     });
   }, []);
 
+  async function loadProfile(userId) {
+    try {
+      const p = await dbGetProfile(userId);
+      setProfile(p);
+      if (!p.must_change_password) {
+        await loadAllData();
+      }
+    } catch {
+      // profile not yet created (race condition), retry once
+      setTimeout(() => loadProfile(userId), 1000);
+    } finally {
+      setAppLoading(false);
+    }
+  }
+
   async function loadAllData() {
-    setLoading(true);
     try {
       const sites = await dbFetchSites();
       const saisies = {};
@@ -57,8 +65,6 @@ export default function App() {
       setState({ sites, saisies });
     } catch (e) {
       console.error('Erreur chargement données', e);
-    } finally {
-      setLoading(false);
     }
   }
 
@@ -67,22 +73,32 @@ export default function App() {
     setTimeout(() => setToast(t => ({ ...t, visible: false })), 2800);
   }
 
-  const handleLogin = useCallback(() => {
-    setLogged(true);
-    loadAllData();
+  const handleLogin = useCallback(async () => {
+    const s = await dbGetSession();
+    setSession(s);
+    if (s) await loadProfile(s.user.id);
   }, []);
+
+  const handlePasswordChanged = useCallback(async () => {
+    if (session) {
+      const p = await dbGetProfile(session.user.id);
+      setProfile(p);
+      await loadAllData();
+    }
+  }, [session]);
 
   const handleLogout = useCallback(async () => {
     await dbLogout();
-    setLogged(false);
+    setSession(null);
+    setProfile(null);
     setState(EMPTY_STATE);
     setCurrentSite(0);
+    setTab('dashboard');
   }, []);
 
   const handleSave = useCallback(async (siteId, entry) => {
     try {
       await dbUpsertSaisie(siteId, entry);
-      // Update local state
       setState(prev => {
         const rows = [...(prev.saisies[siteId] || [])];
         const idx = rows.findIndex(r => r.date === entry.date);
@@ -91,9 +107,8 @@ export default function App() {
         rows.sort((a, b) => a.date.localeCompare(b.date));
         return { ...prev, saisies: { ...prev.saisies, [siteId]: rows } };
       });
-    } catch (e) {
+    } catch {
       showToast('❌ Erreur lors de la sauvegarde');
-      throw e;
     }
   }, []);
 
@@ -105,7 +120,7 @@ export default function App() {
         sites: [...prev.sites, newSite],
         saisies: { ...prev.saisies, [newSite.id]: [] }
       }));
-    } catch (e) {
+    } catch {
       showToast('❌ Erreur lors de l\'ajout du site');
     }
   }, []);
@@ -122,27 +137,50 @@ export default function App() {
         return { ...prev, sites, saisies };
       });
       setCurrentSite(c => Math.max(0, Math.min(c, state.sites.length - 2)));
-    } catch (e) {
+    } catch {
       showToast('❌ Erreur lors de la suppression');
     }
   }, [state.sites]);
 
-  const alerts = computeAlerts(state.sites, state.saisies);
+  const isAdmin = profile?.role === 'admin';
 
+  const TABS = [
+    { key: 'dashboard', label: '📊 Dashboard' },
+    { key: 'saisie', label: '✏️ Saisie' },
+    { key: 'graphiques', label: '📈 Graphiques' },
+    { key: 'rapports', label: '📋 Rapports' },
+    { key: 'sites', label: '🏗 Sites' },
+    ...(isAdmin ? [{ key: 'admin', label: '👤 Admin' }] : []),
+  ];
+
+  const alerts = computeAlerts(state.sites, state.saisies);
   const now = new Date();
   const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  if (!logged) return <Login onLogin={handleLogin} />;
-
-  if (loading) return (
+  // Loading
+  if (appLoading) return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       minHeight: '100vh', background: '#F9FAFB', flexDirection: 'column', gap: 16
     }}>
       <div style={{ fontSize: 40 }}>💧</div>
-      <p style={{ color: '#0057A8', fontWeight: 600 }}>Chargement des données...</p>
+      <p style={{ color: '#0057A8', fontWeight: 600, fontFamily: "'Outfit', sans-serif" }}>Chargement...</p>
     </div>
   );
+
+  // Non connecté
+  if (!session) return <Login onLogin={handleLogin} />;
+
+  // 1er login ou reset de mot de passe → forcer le changement
+  if (profile?.must_change_password) {
+    return (
+      <ChangePassword
+        userId={session.user.id}
+        isFirstLogin={true}
+        onDone={handlePasswordChanged}
+      />
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
@@ -158,8 +196,7 @@ export default function App() {
           <div style={{
             width: 36, height: 36, borderRadius: '50%',
             background: 'rgba(255,255,255,0.2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 18
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18
           }}>💧</div>
           <div>
             <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>SiteWatch Pro</div>
@@ -167,15 +204,15 @@ export default function App() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button
-            onClick={() => setAlertsModal(true)}
-            style={{
-              background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
-              borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
-              fontSize: 13, fontFamily: "'Outfit', sans-serif",
-              display: 'flex', alignItems: 'center', gap: 6
-            }}
-          >
+          {profile?.full_name && (
+            <span style={{ fontSize: 12, opacity: 0.85 }}>{profile.full_name}</span>
+          )}
+          <button onClick={() => setAlertsModal(true)} style={{
+            background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
+            borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
+            fontSize: 13, fontFamily: "'Outfit', sans-serif",
+            display: 'flex', alignItems: 'center', gap: 6
+          }}>
             ⚠
             {alerts.length > 0 && (
               <span style={{
@@ -185,14 +222,11 @@ export default function App() {
               }}>{alerts.length}</span>
             )}
           </button>
-          <button
-            onClick={handleLogout}
-            style={{
-              background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
-              borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
-              fontSize: 13, fontFamily: "'Outfit', sans-serif"
-            }}
-          >↪ Sortir</button>
+          <button onClick={handleLogout} style={{
+            background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
+            borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
+            fontSize: 13, fontFamily: "'Outfit', sans-serif"
+          }}>↪ Sortir</button>
         </div>
       </div>
 
@@ -203,40 +237,25 @@ export default function App() {
         position: 'sticky', top: 64, zIndex: 99
       }}>
         {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            style={{
-              padding: '11px 14px', border: 'none', background: 'none',
-              fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 500,
-              color: tab === t.key ? '#0057A8' : '#667085',
-              cursor: 'pointer', whiteSpace: 'nowrap',
-              borderBottom: tab === t.key ? '3px solid #0057A8' : '3px solid transparent',
-              transition: 'all 0.2s'
-            }}
-          >{t.label}</button>
+          <button key={t.key} onClick={() => setTab(t.key)} style={{
+            padding: '11px 14px', border: 'none', background: 'none',
+            fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 500,
+            color: tab === t.key ? '#0057A8' : '#667085',
+            cursor: 'pointer', whiteSpace: 'nowrap',
+            borderBottom: tab === t.key ? '3px solid #0057A8' : '3px solid transparent',
+            transition: 'all 0.2s'
+          }}>{t.label}</button>
         ))}
       </div>
 
       {/* CONTENT */}
       <div style={{ padding: 16, flex: 1, maxWidth: 900, margin: '0 auto', width: '100%' }}>
-        {tab === 'dashboard' && (
-          <Dashboard state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />
-        )}
-        {tab === 'saisie' && (
-          <Saisie state={state} currentSite={currentSite} onSelectSite={setCurrentSite}
-            onSave={handleSave} showToast={showToast} />
-        )}
-        {tab === 'graphiques' && (
-          <Graphiques state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />
-        )}
-        {tab === 'rapports' && (
-          <Rapports state={state} showToast={showToast} />
-        )}
-        {tab === 'sites' && (
-          <Sites state={state} onAddSite={handleAddSite}
-            onDeleteSite={handleDeleteSite} showToast={showToast} />
-        )}
+        {tab === 'dashboard' && <Dashboard state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />}
+        {tab === 'saisie' && <Saisie state={state} currentSite={currentSite} onSelectSite={setCurrentSite} onSave={handleSave} showToast={showToast} />}
+        {tab === 'graphiques' && <Graphiques state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />}
+        {tab === 'rapports' && <Rapports state={state} showToast={showToast} />}
+        {tab === 'sites' && <Sites state={state} onAddSite={handleAddSite} onDeleteSite={handleDeleteSite} showToast={showToast} />}
+        {tab === 'admin' && isAdmin && <Admin showToast={showToast} />}
       </div>
 
       {/* ALERTS MODAL */}
@@ -250,9 +269,7 @@ export default function App() {
             padding: 24, width: '100%', maxHeight: '70vh', overflowY: 'auto'
           }}>
             <div style={{ width: 36, height: 4, background: '#E4E7EC', borderRadius: 2, margin: '0 auto 16px' }} />
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>
-              Alertes actives ({alerts.length})
-            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Alertes actives ({alerts.length})</div>
             {alerts.length === 0
               ? <p style={{ fontSize: 13, color: '#667085' }}>✅ Aucune alerte active</p>
               : alerts.map((a, i) => <AlertItem key={i} {...a} />)
