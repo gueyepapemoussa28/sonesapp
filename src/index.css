@@ -143,6 +143,6 @@ a { text-decoration: none; color: inherit; }
 @media (min-width: 768px) {
   .page-content {
     padding: 24px;
-    padding-bottom: 24px;
+    padding-bottom: 120px;
   }
 }
