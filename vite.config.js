@@ -13,6 +13,7 @@ export default defineConfig({
           'charts': ['recharts'],
           'supabase': ['@supabase/supabase-js'],
           'xlsx': ['xlsx'],
+          'exceljs': ['exceljs'],
         }
       }
     }

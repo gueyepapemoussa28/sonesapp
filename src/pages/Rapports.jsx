@@ -24,16 +24,21 @@ export default function Rapports({ state, showToast }) {
   });
   allRows.sort((a, b) => b.date.localeCompare(a.date));
 
-  function handleExport() {
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
     try {
       if (reportType === 'daily') {
-        exportDaily(sites, saisies);
+        await exportDaily(sites, saisies);
       } else {
-        exportMonthly(sites, saisies, month);
+        await exportMonthly(sites, saisies, month);
       }
-      showToast('📥 Export Excel généré avec succès');
+      showToast('📥 Rapport Excel généré avec succès');
     } catch (e) {
       showToast('❌ Erreur export: ' + e.message);
+    } finally {
+      setExporting(false);
     }
   }
 
@@ -66,12 +71,14 @@ export default function Rapports({ state, showToast }) {
           </div>
         )}
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
-          <button onClick={handleExport} style={{
-            background: '#DCFAE6', color: '#027A48', border: '1.5px solid #027A48',
+          <button onClick={handleExport} disabled={exporting} style={{
+            background: exporting ? '#F2F4F7' : '#DCFAE6',
+            color: exporting ? '#667085' : '#027A48',
+            border: `1.5px solid ${exporting ? '#E4E7EC' : '#027A48'}`,
             borderRadius: 10, padding: '11px 16px', fontSize: 13, fontWeight: 600,
-            cursor: 'pointer', flex: 1, fontFamily: "'Outfit', sans-serif"
+            cursor: exporting ? 'not-allowed' : 'pointer', flex: 1, fontFamily: "'Outfit', sans-serif"
           }}>
-            📥 Export Excel
+            {exporting ? '⏳ Génération...' : '📥 Export Excel'}
           </button>
           <button onClick={handleSyncDrive} style={{
             background: 'white', color: '#0057A8', border: '1.5px solid #0057A8',
