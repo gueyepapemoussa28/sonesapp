@@ -1,10 +1,14 @@
-// src/pages/Dashboard.js
 import React from 'react';
-import { Section, KpiCard, AlertItem, FuelBar, SiteSelector } from '../components/UI.jsx';
+import { Section, KpiCard, AlertItem, FuelBar, SiteSelector, StatusBadge, EmptyState } from '../components/UI.jsx';
 import { getLatest, getPrev, getDelta, computeAlerts } from '../utils/store.js';
 
 export default function Dashboard({ state, currentSite, onSelectSite }) {
   const { sites, saisies } = state;
+
+  if (!sites.length) return (
+    <EmptyState icon="🏗" title="Aucun site configuré" sub="Allez dans l'onglet Sites pour ajouter votre premier site." />
+  );
+
   const site = sites[currentSite];
   const latest = getLatest(saisies, site.id);
   const prev = getPrev(saisies, site.id);
@@ -12,18 +16,36 @@ export default function Dashboard({ state, currentSite, onSelectSite }) {
   const siteAlerts = alerts.filter(a => a.site === site.name);
 
   const pressVariant = !latest ? 'default' : latest.pression < 2 ? 'alert' : 'ok';
-  const carbVariant = !latest ? 'default' : latest.carburant <= 10 ? 'alert' : latest.carburant <= 20 ? 'warn' : 'ok';
+  const carbVariant  = !latest ? 'default' : latest.carburant <= 10 ? 'alert' : latest.carburant <= 20 ? 'warn' : 'ok';
 
   return (
     <div>
       <SiteSelector sites={sites} current={currentSite} onSelect={onSelectSite} />
 
+      {/* Site status card */}
+      <div style={{
+        background: 'linear-gradient(135deg, #003d7a 0%, #0057A8 100%)',
+        borderRadius: 16, padding: '16px 18px', marginBottom: 14,
+        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        boxShadow: '0 4px 16px rgba(0,57,122,0.3)'
+      }}>
+        <div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Site actif</div>
+          <div style={{ fontSize: 17, fontWeight: 800, letterSpacing: '-0.3px' }}>{site.name}</div>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 3 }}>
+            {site.loc} {latest ? `· Dernière saisie ${latest.date}` : '· Aucune saisie'}
+          </div>
+        </div>
+        <StatusBadge status={site.status} />
+      </div>
+
       {/* KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
         <KpiCard
           label="Pression"
           value={latest?.pression ?? '—'}
           unit="bars"
+          icon="🌡"
           delta={latest && prev ? getDelta(latest, prev, 'pression') : null}
           deltaLabel="vs hier"
           variant={pressVariant}
@@ -32,6 +54,7 @@ export default function Dashboard({ state, currentSite, onSelectSite }) {
           label="Carburant GE"
           value={latest?.carburant ?? '—'}
           unit="%"
+          icon="⛽"
           delta={latest && prev ? getDelta(latest, prev, 'carburant') : null}
           deltaLabel="% vs hier"
           variant={carbVariant}
@@ -40,67 +63,83 @@ export default function Dashboard({ state, currentSite, onSelectSite }) {
           label="Compteur eau"
           value={latest?.cpt_eau?.toLocaleString('fr') ?? '—'}
           unit="m³"
+          icon="💧"
           delta={latest && prev ? getDelta(latest, prev, 'cpt_eau') : null}
           deltaLabel="m³ aujourd'hui"
-          variant="default"
         />
         <KpiCard
           label="k1 énergie"
           value={latest?.k1 ?? '—'}
           unit="kWh"
+          icon="⚡"
           delta={latest && prev ? getDelta(latest, prev, 'k1') : null}
           deltaLabel="vs hier"
-          variant="default"
         />
       </div>
 
       {/* Alerts */}
-      <Section icon="⚠" iconBg="#FEF0E5" title="Alertes du site">
-        {siteAlerts.length === 0
-          ? <p style={{ fontSize: 13, color: '#667085' }}>✅ Aucune alerte active pour ce site</p>
-          : siteAlerts.map((a, i) => <AlertItem key={i} {...a} />)
-        }
-      </Section>
+      {siteAlerts.length > 0 && (
+        <Section icon="⚠" iconBg="#FEF0E5" title="Alertes du site">
+          {siteAlerts.map((a, i) => <AlertItem key={i} {...a} />)}
+        </Section>
+      )}
 
-      {/* Fuel */}
-      <Section icon="⛽" iconBg="#FEF0E5" title="Niveau carburant groupe électrogène">
+      {/* Fuel bar */}
+      <Section icon="⛽" iconBg="#FEF0E5" title="Niveau carburant">
         {latest ? (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-              <span style={{ fontSize: 13, color: '#667085' }}>Réservoir</span>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+              <span style={{ fontSize: 12, color: '#667085' }}>Réservoir</span>
               <span style={{
-                fontSize: 22, fontWeight: 700, fontFamily: "'Space Mono', monospace",
+                fontSize: 26, fontWeight: 800, fontFamily: "'Space Mono', monospace",
                 color: latest.carburant <= 20 ? '#D92D20' : '#027A48'
-              }}>{latest.carburant}%</span>
+              }}>{latest.carburant}<span style={{ fontSize: 14, fontWeight: 400 }}>%</span></span>
             </div>
             <FuelBar value={latest.carburant} />
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8 }}>
-              <span style={{ fontSize: 12, color: '#667085' }}>Cpt GE: {latest.ge_h} h</span>
-              <span style={{ fontSize: 12, color: '#667085' }}>Marche aujourd'hui: {latest.ge_marche} h</span>
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', marginTop: 12,
+              padding: '10px 14px', background: '#F9FAFB', borderRadius: 10
+            }}>
+              <div>
+                <div style={{ fontSize: 10, color: '#667085', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Cpt GE</div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Space Mono', monospace", color: '#0057A8' }}>{latest.ge_h} h</div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, color: '#667085', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px' }}>Marche aujourd'hui</div>
+                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Space Mono', monospace", color: '#0057A8' }}>{latest.ge_marche} h</div>
+              </div>
             </div>
           </>
-        ) : <p style={{ fontSize: 13, color: '#667085' }}>Aucune donnée</p>}
+        ) : <EmptyState icon="⛽" title="Aucune donnée" sub="Faites une saisie pour voir les données." />}
       </Section>
 
       {/* Energy */}
-      <Section icon="⚡" iconBg="#E8F2FF" title="Énergie — dernière saisie">
+      <Section icon="⚡" iconBg="#EBF3FF" title="Énergie — dernière saisie">
         {latest ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-            {[['k1', latest.k1, 'kWh'], ['k2', latest.k2, 'kWh'], ['kvar', latest.kvar, 'kvar'], ['cos φ', latest.cosphi, '']].map(([l, v, u]) => (
-              <div key={l} style={{ background: '#E8F2FF', borderRadius: 10, padding: 10 }}>
-                <div style={{ fontSize: 11, color: '#0057A8', fontWeight: 600 }}>{l}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, fontFamily: "'Space Mono', monospace", color: '#003d7a' }}>
-                  {v}<span style={{ fontSize: 11 }}> {u}</span>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+            {[
+              { label: 'k1', value: latest.k1, unit: 'kWh', color: '#0057A8', bg: '#EBF3FF' },
+              { label: 'k2', value: latest.k2, unit: 'kWh', color: '#00917C', bg: '#E0F5F1' },
+              { label: 'kvar', value: latest.kvar, unit: 'kvar', color: '#F4720B', bg: '#FFF4EC' },
+              { label: 'cos φ', value: latest.cosphi, unit: '', color: '#344054', bg: '#F9FAFB' },
+            ].map(({ label, value, unit, color, bg }) => (
+              <div key={label} style={{
+                background: bg, borderRadius: 12, padding: '12px 14px',
+                border: `1px solid ${color}22`
+              }}>
+                <div style={{ fontSize: 10, color, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }}>{label}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Space Mono', monospace", color, lineHeight: 1 }}>
+                  {value}<span style={{ fontSize: 10, fontWeight: 400, marginLeft: 2 }}>{unit}</span>
                 </div>
               </div>
             ))}
           </div>
-        ) : <p style={{ fontSize: 13, color: '#667085' }}>Aucune donnée</p>}
+        ) : <EmptyState icon="⚡" title="Aucune donnée" />}
       </Section>
 
-      {/* Toutes les alertes */}
+      {/* Global alerts */}
       {alerts.length > 0 && (
-        <Section icon="🚨" iconBg="#FEE4E2" title={`Toutes les alertes (${alerts.length})`}>
+        <Section icon="🚨" iconBg="#FFF1F0" title={`Toutes les alertes (${alerts.length})`}>
           {alerts.map((a, i) => <AlertItem key={i} {...a} />)}
         </Section>
       )}

@@ -7,7 +7,7 @@ import Graphiques from './pages/Graphiques.jsx';
 import Rapports from './pages/Rapports.jsx';
 import Sites from './pages/Sites.jsx';
 import Admin from './pages/Admin.jsx';
-import { Toast, AlertItem } from './components/UI.jsx';
+import { Toast, AlertItem, Modal } from './components/UI.jsx';
 import { computeAlerts } from './utils/store';
 import {
   dbGetSession, dbLogout, dbGetProfile,
@@ -16,6 +16,15 @@ import {
 } from './utils/store';
 
 const EMPTY_STATE = { sites: [], saisies: {} };
+
+// Nav items config
+const NAV = [
+  { key: 'dashboard',  label: 'Dashboard',  icon: '◉' },
+  { key: 'saisie',     label: 'Saisie',     icon: '✏' },
+  { key: 'graphiques', label: 'Graphiques', icon: '↗' },
+  { key: 'rapports',   label: 'Rapports',   icon: '≡' },
+  { key: 'sites',      label: 'Sites',      icon: '◈' },
+];
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -27,15 +36,10 @@ export default function App() {
   const [alertsModal, setAlertsModal] = useState(false);
   const [appLoading, setAppLoading] = useState(true);
 
-  // Check session on mount (handles password reset redirect too)
   useEffect(() => {
     dbGetSession().then(s => {
-      if (s) {
-        setSession(s);
-        loadProfile(s.user.id);
-      } else {
-        setAppLoading(false);
-      }
+      if (s) { setSession(s); loadProfile(s.user.id); }
+      else setAppLoading(false);
     });
   }, []);
 
@@ -43,11 +47,8 @@ export default function App() {
     try {
       const p = await dbGetProfile(userId);
       setProfile(p);
-      if (!p.must_change_password) {
-        await loadAllData();
-      }
+      if (!p.must_change_password) await loadAllData();
     } catch {
-      // profile not yet created (race condition), retry once
       setTimeout(() => loadProfile(userId), 1000);
     } finally {
       setAppLoading(false);
@@ -59,13 +60,10 @@ export default function App() {
       const sites = await dbFetchSites();
       const saisies = {};
       await Promise.all(sites.map(async site => {
-        const rows = await dbFetchSaisies(site.id);
-        saisies[site.id] = rows;
+        saisies[site.id] = await dbFetchSaisies(site.id);
       }));
       setState({ sites, saisies });
-    } catch (e) {
-      console.error('Erreur chargement données', e);
-    }
+    } catch (e) { console.error(e); }
   }
 
   function showToast(msg) {
@@ -89,11 +87,8 @@ export default function App() {
 
   const handleLogout = useCallback(async () => {
     await dbLogout();
-    setSession(null);
-    setProfile(null);
-    setState(EMPTY_STATE);
-    setCurrentSite(0);
-    setTab('dashboard');
+    setSession(null); setProfile(null);
+    setState(EMPTY_STATE); setCurrentSite(0); setTab('dashboard');
   }, []);
 
   const handleSave = useCallback(async (siteId, entry) => {
@@ -107,22 +102,17 @@ export default function App() {
         rows.sort((a, b) => a.date.localeCompare(b.date));
         return { ...prev, saisies: { ...prev.saisies, [siteId]: rows } };
       });
-    } catch {
-      showToast('❌ Erreur lors de la sauvegarde');
-    }
+    } catch { showToast('❌ Erreur lors de la sauvegarde'); }
   }, []);
 
   const handleAddSite = useCallback(async ({ name, loc, status }) => {
     try {
       const newSite = await dbAddSite({ name, loc, status });
       setState(prev => ({
-        ...prev,
-        sites: [...prev.sites, newSite],
+        ...prev, sites: [...prev.sites, newSite],
         saisies: { ...prev.saisies, [newSite.id]: [] }
       }));
-    } catch {
-      showToast('❌ Erreur lors de l\'ajout du site');
-    }
+    } catch { showToast('❌ Erreur lors de l\'ajout du site'); }
   }, []);
 
   const handleDeleteSite = useCallback(async (idx) => {
@@ -137,146 +127,194 @@ export default function App() {
         return { ...prev, sites, saisies };
       });
       setCurrentSite(c => Math.max(0, Math.min(c, state.sites.length - 2)));
-    } catch {
-      showToast('❌ Erreur lors de la suppression');
-    }
+    } catch { showToast('❌ Erreur lors de la suppression'); }
   }, [state.sites]);
 
   const isAdmin = profile?.role === 'admin';
-
-  const TABS = [
-    { key: 'dashboard', label: '📊 Dashboard' },
-    { key: 'saisie', label: '✏️ Saisie' },
-    { key: 'graphiques', label: '📈 Graphiques' },
-    { key: 'rapports', label: '📋 Rapports' },
-    { key: 'sites', label: '🏗 Sites' },
-    ...(isAdmin ? [{ key: 'admin', label: '👤 Admin' }] : []),
-  ];
-
+  const navItems = isAdmin ? [...NAV, { key: 'admin', label: 'Admin', icon: '⚙' }] : NAV;
   const alerts = computeAlerts(state.sites, state.saisies);
   const now = new Date();
-  const dateStr = now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  // Loading
+  // Loading screen
   if (appLoading) return (
     <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      minHeight: '100vh', background: '#F9FAFB', flexDirection: 'column', gap: 16
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      justifyContent: 'center', minHeight: '100vh',
+      background: 'linear-gradient(135deg, #003d7a 0%, #0057A8 60%, #007B6E 100%)',
+      gap: 16
     }}>
-      <div style={{ fontSize: 40 }}>💧</div>
-      <p style={{ color: '#0057A8', fontWeight: 600, fontFamily: "'Outfit', sans-serif" }}>Chargement...</p>
+      <div style={{
+        width: 72, height: 72, borderRadius: '50%',
+        background: 'rgba(255,255,255,0.15)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 32, animation: 'pulse-dot 1.5s infinite'
+      }}>💧</div>
+      <p style={{ color: 'rgba(255,255,255,0.85)', fontWeight: 600, fontFamily: "'Outfit', sans-serif", fontSize: 15 }}>
+        Chargement...
+      </p>
     </div>
   );
 
-  // Non connecté
   if (!session) return <Login onLogin={handleLogin} />;
+  if (profile?.must_change_password) return (
+    <ChangePassword userId={session.user.id} isFirstLogin={true} onDone={handlePasswordChanged} />
+  );
 
-  // 1er login ou reset de mot de passe → forcer le changement
-  if (profile?.must_change_password) {
-    return (
-      <ChangePassword
-        userId={session.user.id}
-        isFirstLogin={true}
-        onDone={handlePasswordChanged}
-      />
-    );
-  }
+  const pageTitle = {
+    dashboard: 'Tableau de bord', saisie: 'Saisie des données',
+    graphiques: 'Graphiques', rapports: 'Rapports', sites: 'Gestion des sites', admin: 'Administration'
+  }[tab];
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      {/* HEADER */}
+    <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', background: '#F0F5FC' }}>
+
+      {/* ── HEADER ── */}
       <div style={{
-        background: 'linear-gradient(135deg, #003d7a, #0057A8)',
-        color: 'white', padding: '14px 20px',
+        background: 'linear-gradient(135deg, #003d7a 0%, #0057A8 100%)',
+        color: 'white', padding: '12px 18px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         position: 'sticky', top: 0, zIndex: 100,
-        boxShadow: '0 4px 12px rgba(0,60,130,0.2)'
+        boxShadow: '0 2px 12px rgba(0,40,100,0.25)'
       }}>
+        {/* Left: logo + title */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 36, height: 36, borderRadius: '50%',
-            background: 'rgba(255,255,255,0.2)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18
+            width: 34, height: 34, borderRadius: 10,
+            background: 'rgba(255,255,255,0.18)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, fontWeight: 700, backdropFilter: 'blur(8px)'
           }}>💧</div>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1 }}>SiteWatch Pro</div>
-            <div style={{ fontSize: 10, opacity: 0.75, marginTop: 2, textTransform: 'capitalize' }}>{dateStr}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, letterSpacing: '-0.3px', lineHeight: 1 }}>SiteWatch Pro</div>
+            <div style={{ fontSize: 10, opacity: 0.65, marginTop: 2 }}>
+              {now.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </div>
           </div>
         </div>
+
+        {/* Right: alerts + user */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {profile?.full_name && (
-            <span style={{ fontSize: 12, opacity: 0.85 }}>{profile.full_name}</span>
-          )}
           <button onClick={() => setAlertsModal(true)} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
-            borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
-            fontSize: 13, fontFamily: "'Outfit', sans-serif",
-            display: 'flex', alignItems: 'center', gap: 6
+            background: 'rgba(255,255,255,0.12)', border: 'none', color: 'white',
+            borderRadius: 10, width: 36, height: 36, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 16, position: 'relative'
           }}>
-            ⚠
+            🔔
             {alerts.length > 0 && (
               <span style={{
-                background: '#F4720B', color: 'white', borderRadius: '50%',
-                width: 18, height: 18, fontSize: 10,
-                display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700
-              }}>{alerts.length}</span>
+                position: 'absolute', top: 4, right: 4,
+                width: 8, height: 8, borderRadius: '50%',
+                background: '#F4720B', border: '1.5px solid #0057A8'
+              }} />
             )}
           </button>
+
           <button onClick={handleLogout} style={{
-            background: 'rgba(255,255,255,0.15)', border: 'none', color: 'white',
-            borderRadius: 8, padding: '6px 10px', cursor: 'pointer',
-            fontSize: 13, fontFamily: "'Outfit', sans-serif"
-          }}>↪ Sortir</button>
+            background: 'rgba(255,255,255,0.12)', border: 'none', color: 'white',
+            borderRadius: 10, padding: '0 12px', height: 36, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+            fontFamily: "'Outfit', sans-serif"
+          }}>
+            <div style={{
+              width: 20, height: 20, borderRadius: '50%',
+              background: 'rgba(255,255,255,0.25)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 10, fontWeight: 700
+            }}>
+              {(profile?.full_name || profile?.email || '?').charAt(0).toUpperCase()}
+            </div>
+            <span style={{ display: 'none' }}>{profile?.full_name?.split(' ')[0]}</span>
+            ↪
+          </button>
         </div>
       </div>
 
-      {/* NAV TABS */}
+      {/* ── PAGE TITLE BAR ── */}
       <div style={{
-        background: 'white', borderBottom: '1px solid #E4E7EC',
-        display: 'flex', overflowX: 'auto', padding: '0 16px', gap: 4,
-        position: 'sticky', top: 64, zIndex: 99
+        background: 'white', borderBottom: '1px solid #EAECF0',
+        padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 8
       }}>
-        {TABS.map(t => (
-          <button key={t.key} onClick={() => setTab(t.key)} style={{
-            padding: '11px 14px', border: 'none', background: 'none',
-            fontFamily: "'Outfit', sans-serif", fontSize: 13, fontWeight: 500,
-            color: tab === t.key ? '#0057A8' : '#667085',
-            cursor: 'pointer', whiteSpace: 'nowrap',
-            borderBottom: tab === t.key ? '3px solid #0057A8' : '3px solid transparent',
-            transition: 'all 0.2s'
-          }}>{t.label}</button>
-        ))}
+        <span style={{ fontSize: 15, fontWeight: 700, color: '#101828' }}>{pageTitle}</span>
+        {alerts.length > 0 && tab === 'dashboard' && (
+          <span style={{
+            background: '#FEF0E5', color: '#F4720B', fontSize: 10,
+            fontWeight: 700, padding: '2px 7px', borderRadius: 20
+          }}>{alerts.length} alerte{alerts.length > 1 ? 's' : ''}</span>
+        )}
       </div>
 
-      {/* CONTENT */}
-      <div style={{ padding: 16, flex: 1, maxWidth: 900, margin: '0 auto', width: '100%' }}>
-        {tab === 'dashboard' && <Dashboard state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />}
-        {tab === 'saisie' && <Saisie state={state} currentSite={currentSite} onSelectSite={setCurrentSite} onSave={handleSave} showToast={showToast} />}
+      {/* ── CONTENT ── */}
+      <div className="page-content">
+        {tab === 'dashboard'  && <Dashboard state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />}
+        {tab === 'saisie'     && <Saisie state={state} currentSite={currentSite} onSelectSite={setCurrentSite} onSave={handleSave} showToast={showToast} />}
         {tab === 'graphiques' && <Graphiques state={state} currentSite={currentSite} onSelectSite={setCurrentSite} />}
-        {tab === 'rapports' && <Rapports state={state} showToast={showToast} />}
-        {tab === 'sites' && <Sites state={state} onAddSite={handleAddSite} onDeleteSite={handleDeleteSite} showToast={showToast} />}
+        {tab === 'rapports'   && <Rapports state={state} showToast={showToast} />}
+        {tab === 'sites'      && <Sites state={state} onAddSite={handleAddSite} onDeleteSite={handleDeleteSite} showToast={showToast} />}
         {tab === 'admin' && isAdmin && <Admin showToast={showToast} />}
       </div>
 
-      {/* ALERTS MODAL */}
-      {alertsModal && (
-        <div onClick={() => setAlertsModal(false)} style={{
-          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)',
-          display: 'flex', alignItems: 'flex-end', zIndex: 200
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            background: 'white', borderRadius: '20px 20px 0 0',
-            padding: 24, width: '100%', maxHeight: '70vh', overflowY: 'auto'
-          }}>
-            <div style={{ width: 36, height: 4, background: '#E4E7EC', borderRadius: 2, margin: '0 auto 16px' }} />
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16 }}>Alertes actives ({alerts.length})</div>
-            {alerts.length === 0
-              ? <p style={{ fontSize: 13, color: '#667085' }}>✅ Aucune alerte active</p>
-              : alerts.map((a, i) => <AlertItem key={i} {...a} />)
-            }
-          </div>
-        </div>
-      )}
+      {/* ── BOTTOM NAV ── */}
+      <div style={{
+        position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 100,
+        background: 'rgba(255,255,255,0.96)',
+        backdropFilter: 'blur(16px)',
+        borderTop: '1px solid #EAECF0',
+        display: 'flex', alignItems: 'stretch',
+        boxShadow: '0 -4px 20px rgba(16,24,40,0.08)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
+      }}>
+        {navItems.map(item => {
+          const active = tab === item.key;
+          return (
+            <button
+              key={item.key}
+              onClick={() => setTab(item.key)}
+              style={{
+                flex: 1, display: 'flex', flexDirection: 'column',
+                alignItems: 'center', justifyContent: 'center',
+                gap: 3, padding: '10px 4px',
+                border: 'none', background: 'none', cursor: 'pointer',
+                color: active ? '#0057A8' : '#98A2B3',
+                transition: 'color 0.2s',
+                fontFamily: "'Outfit', sans-serif",
+                position: 'relative'
+              }}
+            >
+              {active && (
+                <div style={{
+                  position: 'absolute', top: 0, left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: 24, height: 3, borderRadius: '0 0 4px 4px',
+                  background: '#0057A8'
+                }} />
+              )}
+              <div style={{
+                width: 32, height: 32, borderRadius: 10,
+                background: active ? '#EBF3FF' : 'transparent',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 16, transition: 'background 0.2s'
+              }}>
+                {item.icon}
+              </div>
+              <span style={{ fontSize: 10, fontWeight: active ? 700 : 500 }}>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── ALERTS MODAL ── */}
+      <Modal open={alertsModal} onClose={() => setAlertsModal(false)} title={`Alertes actives (${alerts.length})`}>
+        {alerts.length === 0
+          ? <div style={{ textAlign: 'center', padding: '24px 0', color: '#667085' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+              <div style={{ fontSize: 14, fontWeight: 600 }}>Aucune alerte active</div>
+            </div>
+          : alerts.map((a, i) => <AlertItem key={i} {...a} />)
+        }
+      </Modal>
 
       <Toast message={toast.msg} visible={toast.visible} />
     </div>
