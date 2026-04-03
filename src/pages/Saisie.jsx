@@ -184,7 +184,8 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
           background: 'linear-gradient(135deg,#0057A8,#3381C8)', color: 'white',
           border: 'none', borderRadius: 10, padding: '13px 20px',
           fontSize: 15, fontWeight: 600, width: '100%', cursor: 'pointer',
-          fontFamily: "'Outfit', sans-serif", boxShadow: '0 4px 12px rgba(0,87,168,0.3)'
+          fontFamily: "'Outfit', sans-serif", boxShadow: '0 4px 12px rgba(0,87,168,0.3)',
+          marginBottom: 16
         }}>
           💾 Enregistrer la saisie
         </button>
