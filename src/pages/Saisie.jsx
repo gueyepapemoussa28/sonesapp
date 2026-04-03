@@ -136,56 +136,56 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
         marginBottom: 14, border: '1px solid #E4E7EC',
         boxShadow: '0 1px 4px rgba(16,24,40,0.05)'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-          {/* Flèche précédente */}
+        {/* Ligne 1 : flèches + date */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
           <button onClick={() => hasPrev && setSelectedDate(sortedDates[currentIdx - 1])}
             disabled={!hasPrev}
             style={{
-              width: 36, height: 36, borderRadius: 9, border: '1.5px solid #E4E7EC',
+              width: 34, height: 34, borderRadius: 9, border: '1.5px solid #E4E7EC',
               background: hasPrev ? 'white' : '#F9FAFB', cursor: hasPrev ? 'pointer' : 'default',
-              fontSize: 16, color: hasPrev ? '#0057A8' : '#C0C8D6',
+              fontSize: 18, color: hasPrev ? '#0057A8' : '#C0C8D6',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
             }}>‹</button>
 
-          {/* Sélecteur de date central */}
-          <div style={{ flex: 1, textAlign: 'center' }}>
-            <input
-              type="date"
-              value={selectedDate}
-              max={today()}
-              onChange={e => setSelectedDate(e.target.value)}
-              style={{
-                border: 'none', outline: 'none', fontSize: 15, fontWeight: 700,
-                color: '#101828', textAlign: 'center', cursor: 'pointer',
-                fontFamily: "'Outfit', sans-serif", background: 'transparent', width: '100%'
-              }}
-            />
-            <div style={{ fontSize: 11, marginTop: 2 }}>
-              {isExisting
-                ? <span style={{ color: '#027A48', fontWeight: 600 }}>✓ Saisie enregistrée</span>
-                : <span style={{ color: '#F4720B', fontWeight: 600 }}>Nouvelle saisie</span>
-              }
-            </div>
-          </div>
+          <input
+            type="date"
+            value={selectedDate}
+            max={today()}
+            onChange={e => setSelectedDate(e.target.value)}
+            style={{
+              flex: 1, border: '1.5px solid #E4E7EC', borderRadius: 9,
+              outline: 'none', fontSize: 14, fontWeight: 700,
+              color: '#101828', textAlign: 'center', cursor: 'pointer',
+              fontFamily: "'Outfit', sans-serif", background: 'white',
+              padding: '7px 10px', minWidth: 0
+            }}
+          />
 
-          {/* Flèche suivante */}
           <button onClick={() => hasNext && setSelectedDate(sortedDates[currentIdx + 1])}
             disabled={!hasNext}
             style={{
-              width: 36, height: 36, borderRadius: 9, border: '1.5px solid #E4E7EC',
+              width: 34, height: 34, borderRadius: 9, border: '1.5px solid #E4E7EC',
               background: hasNext ? 'white' : '#F9FAFB', cursor: hasNext ? 'pointer' : 'default',
-              fontSize: 16, color: hasNext ? '#0057A8' : '#C0C8D6',
+              fontSize: 18, color: hasNext ? '#0057A8' : '#C0C8D6',
               display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
             }}>›</button>
+        </div>
 
-          {/* Bouton historique */}
+        {/* Ligne 2 : statut + bouton historique */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{
+            fontSize: 11, fontWeight: 600,
+            color: isExisting ? '#027A48' : '#F4720B'
+          }}>
+            {isExisting ? '✓ Saisie enregistrée' : '+ Nouvelle saisie'}
+          </span>
           <button onClick={() => setShowHistory(v => !v)} style={{
-            padding: '6px 12px', borderRadius: 9, border: '1.5px solid #E4E7EC',
+            padding: '4px 10px', borderRadius: 20, border: '1.5px solid #E4E7EC',
             background: showHistory ? '#EBF3FF' : 'white', cursor: 'pointer',
             fontSize: 11, fontWeight: 600, color: showHistory ? '#0057A8' : '#344054',
-            fontFamily: "'Outfit', sans-serif", flexShrink: 0
+            fontFamily: "'Outfit', sans-serif"
           }}>
-            {sortedDates.length} saisie{sortedDates.length !== 1 ? 's' : ''}
+            📅 {sortedDates.length} saisie{sortedDates.length !== 1 ? 's' : ''}
           </button>
         </div>
 
