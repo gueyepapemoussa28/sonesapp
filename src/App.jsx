@@ -7,6 +7,7 @@ import Graphiques from './pages/Graphiques.jsx';
 import Rapports from './pages/Rapports.jsx';
 import Sites from './pages/Sites.jsx';
 import Admin from './pages/Admin.jsx';
+import UserApp from './pages/UserApp.jsx';
 import { Toast, AlertItem, Modal } from './components/UI.jsx';
 import { computeAlerts } from './utils/store';
 import {
@@ -161,6 +162,11 @@ export default function App() {
   if (!session) return <Login onLogin={handleLogin} />;
   if (profile?.must_change_password) return (
     <ChangePassword userId={session.user.id} isFirstLogin={true} onDone={handlePasswordChanged} />
+  );
+
+  // Regular users → simple saisie-only interface
+  if (profile?.role !== 'admin') return (
+    <UserApp session={session} profile={profile} onLogout={handleLogout} showToast={showToast} />
   );
 
   const pageTitle = {

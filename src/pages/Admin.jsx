@@ -1,29 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { dbFetchUsers, dbInviteUser, dbUpdateUserRole, dbDeleteUser } from '../utils/store.js';
+import { dbFetchUsers, dbInviteUser, dbUpdateUserRole, dbDeleteUser,
+  dbFetchSites, dbFetchSiteUsers, dbAssignUserSite, dbUnassignUserSite } from '../utils/store.js';
 
 const ROLE_LABELS = { admin: 'Administrateur', user: 'Utilisateur' };
 const ROLE_COLORS = { admin: { bg: '#EFF8FF', color: '#0057A8' }, user: { bg: '#F9FAFB', color: '#344054' } };
 
 export default function Admin({ showToast }) {
+  const [activeTab, setActiveTab] = useState('users');
   const [users, setUsers] = useState([]);
+  const [sites, setSites] = useState([]);
+  const [assignments, setAssignments] = useState([]); // [{user_id, site_id}]
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ email: '', full_name: '', role: 'user' });
   const [sending, setSending] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(null);
 
-  useEffect(() => { loadUsers(); }, []);
+  useEffect(() => { loadAll(); }, []);
 
-  async function loadUsers() {
+  async function loadAll() {
     setLoading(true);
     try {
-      const data = await dbFetchUsers();
-      setUsers(data);
-    } catch (e) {
-      showToast('❌ Erreur lors du chargement des utilisateurs');
+      const [usersData, sitesData, assignData] = await Promise.all([
+        dbFetchUsers(), dbFetchSites(), dbFetchSiteUsers()
+      ]);
+      setUsers(usersData);
+      setSites(sitesData);
+      setAssignments(assignData);
+    } catch {
+      showToast('❌ Erreur lors du chargement');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadUsers() {
+    const data = await dbFetchUsers();
+    setUsers(data);
   }
 
   async function handleInvite(e) {
@@ -64,6 +77,24 @@ export default function Admin({ showToast }) {
     }
   }
 
+  function isAssigned(userId, siteId) {
+    return assignments.some(a => a.user_id === userId && a.site_id === siteId);
+  }
+
+  async function toggleAssignment(userId, siteId) {
+    try {
+      if (isAssigned(userId, siteId)) {
+        await dbUnassignUserSite(userId, siteId);
+        setAssignments(prev => prev.filter(a => !(a.user_id === userId && a.site_id === siteId)));
+      } else {
+        await dbAssignUserSite(userId, siteId);
+        setAssignments(prev => [...prev, { user_id: userId, site_id: siteId }]);
+      }
+    } catch {
+      showToast('❌ Erreur lors de la modification');
+    }
+  }
+
   const inputStyle = {
     width: '100%', padding: '10px 12px',
     border: '1.5px solid #E4E7EC', borderRadius: 9,
@@ -77,6 +108,75 @@ export default function Admin({ showToast }) {
 
   return (
     <div>
+      {/* Onglets */}
+      <div style={{ display: 'flex', gap: 4, marginBottom: 20, background: 'white', borderRadius: 12, padding: 4, border: '1px solid #E4E7EC' }}>
+        {[{ key: 'users', label: '👤 Utilisateurs' }, { key: 'assign', label: '🔗 Assignation sites' }].map(t => (
+          <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+            flex: 1, padding: '9px', borderRadius: 9, border: 'none', cursor: 'pointer',
+            background: activeTab === t.key ? '#0057A8' : 'transparent',
+            color: activeTab === t.key ? 'white' : '#667085',
+            fontSize: 13, fontWeight: 600, fontFamily: "'Outfit', sans-serif", transition: 'all 0.2s'
+          }}>{t.label}</button>
+        ))}
+      </div>
+
+      {/* ── ONGLET ASSIGNATION ── */}
+      {activeTab === 'assign' && (
+        <div>
+          {loading ? <div style={{ textAlign: 'center', padding: 40, color: '#667085' }}>Chargement...</div> : (
+            users.filter(u => u.role !== 'admin').length === 0
+              ? <div style={{ textAlign: 'center', padding: 40, color: '#667085' }}>Aucun utilisateur à assigner.</div>
+              : users.filter(u => u.role !== 'admin').map(user => (
+                <div key={user.id} style={{
+                  background: 'white', borderRadius: 14, padding: 16,
+                  marginBottom: 12, border: '1px solid #E4E7EC',
+                  boxShadow: '0 1px 4px rgba(16,24,40,0.05)'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                    <div style={{
+                      width: 36, height: 36, borderRadius: '50%',
+                      background: 'linear-gradient(135deg, #0057A8, #00917C)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      color: 'white', fontWeight: 700, flexShrink: 0
+                    }}>{(user.full_name || user.email).charAt(0).toUpperCase()}</div>
+                    <div>
+                      <div style={{ fontWeight: 700, fontSize: 14, color: '#101828' }}>{user.full_name || '—'}</div>
+                      <div style={{ fontSize: 12, color: '#667085' }}>{user.email}</div>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    {sites.map(site => {
+                      const assigned = isAssigned(user.id, site.id);
+                      return (
+                        <button key={site.id} onClick={() => toggleAssignment(user.id, site.id)} style={{
+                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                          padding: '10px 14px', borderRadius: 10, cursor: 'pointer',
+                          border: `1.5px solid ${assigned ? '#00917C' : '#E4E7EC'}`,
+                          background: assigned ? '#E0F5F1' : '#F9FAFB',
+                          fontFamily: "'Outfit', sans-serif", transition: 'all 0.2s'
+                        }}>
+                          <span style={{ fontSize: 13, fontWeight: 600, color: assigned ? '#00917C' : '#344054' }}>
+                            {site.name}
+                          </span>
+                          <span style={{
+                            fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 20,
+                            background: assigned ? '#00917C' : '#E4E7EC',
+                            color: assigned ? 'white' : '#667085'
+                          }}>
+                            {assigned ? '✓ Assigné' : '+ Assigner'}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))
+          )}
+        </div>
+      )}
+
+      {/* ── ONGLET UTILISATEURS ── */}
+      {activeTab === 'users' && <>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
         <div>
@@ -251,6 +351,8 @@ export default function Admin({ showToast }) {
           </div>
         </div>
       )}
+    </>}
+
     </div>
   );
 }

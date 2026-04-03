@@ -123,6 +123,52 @@ export async function dbDeleteUser(userId) {
   if (error) throw error;
 }
 
+// ── Assignation users ↔ sites ─────────────────────────────────────────────────
+
+export async function dbFetchUserSites(userId) {
+  const { data, error } = await supabase
+    .from('user_sites')
+    .select('site_id')
+    .eq('user_id', userId);
+  if (error) throw error;
+  return data.map(r => r.site_id);
+}
+
+export async function dbFetchSiteUsers() {
+  const { data, error } = await supabase
+    .from('user_sites')
+    .select('user_id, site_id');
+  if (error) throw error;
+  return data;
+}
+
+export async function dbAssignUserSite(userId, siteId) {
+  const { error } = await supabase
+    .from('user_sites')
+    .upsert({ user_id: userId, site_id: siteId }, { onConflict: 'user_id,site_id' });
+  if (error) throw error;
+}
+
+export async function dbUnassignUserSite(userId, siteId) {
+  const { error } = await supabase
+    .from('user_sites')
+    .delete()
+    .eq('user_id', userId)
+    .eq('site_id', siteId);
+  if (error) throw error;
+}
+
+// ── Soumettre une saisie (verrouillage définitif) ─────────────────────────────
+
+export async function dbSubmitSaisie(siteId, date) {
+  const { error } = await supabase
+    .from('saisies')
+    .update({ status: 'submitted', submitted_at: new Date().toISOString() })
+    .eq('site_id', siteId)
+    .eq('date', date);
+  if (error) throw error;
+}
+
 export const THRESHOLDS = {
   pression_min: 2.0,
   carburant_warn: 20,
