@@ -37,8 +37,11 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
     return e => setForm(f => ({ ...f, [field]: e.target.value }));
   }
 
-  function handleSubmit(e) {
+  const [saving, setSaving] = React.useState(false);
+
+  async function handleSubmit(e) {
     e.preventDefault();
+    setSaving(true);
     const entry = {
       date: form.date,
       heure: form.heure,
@@ -54,8 +57,14 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
       carburant: parseInt(form.carburant) || 0,
       obs: form.obs,
     };
-    onSave(site.id, entry);
-    showToast('✅ Saisie enregistrée — ' + site.name);
+    try {
+      await onSave(site.id, entry);
+      showToast('✅ Saisie enregistrée — ' + site.name);
+    } catch {
+      showToast('❌ Erreur — saisie non sauvegardée');
+    } finally {
+      setSaving(false);
+    }
   }
 
   const fieldStyle = {
@@ -180,14 +189,15 @@ export default function Saisie({ state, currentSite, onSelectSite, onSave, showT
           />
         </Section>
 
-        <button type="submit" style={{
-          background: 'linear-gradient(135deg,#0057A8,#3381C8)', color: 'white',
-          border: 'none', borderRadius: 10, padding: '13px 20px',
-          fontSize: 15, fontWeight: 600, width: '100%', cursor: 'pointer',
+        <button type="submit" disabled={saving} style={{
+          background: saving ? '#A0AEBF' : 'linear-gradient(135deg,#0057A8,#3381C8)',
+          color: 'white', border: 'none', borderRadius: 10, padding: '13px 20px',
+          fontSize: 15, fontWeight: 600, width: '100%',
+          cursor: saving ? 'not-allowed' : 'pointer',
           fontFamily: "'Outfit', sans-serif", boxShadow: '0 4px 12px rgba(0,87,168,0.3)',
           marginBottom: 16
         }}>
-          💾 Enregistrer la saisie
+          {saving ? '⏳ Enregistrement...' : '💾 Enregistrer la saisie'}
         </button>
       </form>
     </div>
